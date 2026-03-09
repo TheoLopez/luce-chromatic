@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useUser } from "@/context/UserContext";
 import { analyzeImage } from "@/lib/gemini";
+import { cn } from "@/lib/utils";
 
 export default function SmartCamera() {
     const router = useRouter();
@@ -400,6 +401,3 @@ function Indicator({ label, icon: Icon, active }: { label: string, icon: any, ac
     );
 }
 
-function cn(...classes: (string | undefined | null | false)[]) {
-    return classes.filter(Boolean).join(' ');
-}

@@ -4,11 +4,13 @@ import Link from "next/link";
 import { Sparkles, LogIn } from "lucide-react";
 import { useUser } from "@/context/UserContext";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Toast } from "@/components/ui/Toast";
 
 export default function Home() {
   const { user, login, isLoading, analysis } = useUser();
   const router = useRouter();
+  const [loginError, setLoginError] = useState("");
 
   useEffect(() => {
     if (!isLoading) {
@@ -22,6 +24,15 @@ export default function Home() {
     }
   }, [user, isLoading, analysis, router]);
 
+  const handleLogin = async () => {
+    setLoginError("");
+    try {
+      await login();
+    } catch {
+      setLoginError("No se pudo iniciar sesión. Verifica tu conexión e intenta de nuevo.");
+    }
+  };
+
   if (isLoading) {
     return (
       <main className="h-screen w-full bg-black text-white flex items-center justify-center">
@@ -32,6 +43,15 @@ export default function Home() {
 
   return (
     <main className="h-screen w-full bg-black text-white flex flex-col items-center justify-center relative overflow-hidden">
+      {loginError && (
+        <Toast
+          message={loginError}
+          isVisible={true}
+          type="error"
+          onClose={() => setLoginError("")}
+        />
+      )}
+
       {/* Background Ambience - Neutral */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,_rgba(255,255,255,0.05),_rgba(0,0,0,1))]" />
       <div className="absolute top-[-20%] left-[-20%] w-[600px] h-[600px] bg-white/5 rounded-full blur-[120px] animate-pulse" />
@@ -41,7 +61,10 @@ export default function Home() {
 
         {/* Hero Section */}
         <div className="space-y-6 flex flex-col items-center">
-          <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-white/10 to-white/5 border border-white/10 flex items-center justify-center backdrop-blur-xl shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500">
+          <div
+            aria-hidden="true"
+            className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-white/10 to-white/5 border border-white/10 flex items-center justify-center backdrop-blur-xl shadow-2xl rotate-3 hover:rotate-0 transition-transform duration-500"
+          >
             <Sparkles className="w-10 h-10 text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]" />
           </div>
 
@@ -64,7 +87,7 @@ export default function Home() {
         {/* Actions */}
         <div className="w-full space-y-4">
           <button
-            onClick={login}
+            onClick={handleLogin}
             className="w-full bg-white text-black h-14 rounded-2xl font-bold tracking-wide hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-3 shadow-[0_0_30px_rgba(255,255,255,0.1)]"
           >
             <div className="w-6 h-6 bg-white rounded-full flex items-center justify-center">
@@ -83,7 +106,7 @@ export default function Home() {
 
       {/* Footer */}
       <div className="absolute bottom-8 text-[10px] text-gray-600 font-medium tracking-widest uppercase">
-        Powered by Gemini 2.0
+        Powered by Gemini 2.5
       </div>
     </main>
   );

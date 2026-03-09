@@ -228,7 +228,7 @@ export async function generateOutfit(analysis: any, occasion: string, time: stri
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Firebase ${token}`,
-          "X-Goog-Api-Key": apiKey
+          "X-Goog-Api-Key": apiKey ?? ""
         },
         body: JSON.stringify({
           instances: [{

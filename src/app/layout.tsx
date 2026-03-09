@@ -1,12 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { UserProvider } from "@/context/UserContext";
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-});
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "LUCE - Verdad Cromática",
@@ -28,12 +23,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body
-        className={`${inter.variable} antialiased bg-black text-white`}
-      >
-        <UserProvider>
-          {children}
-        </UserProvider>
+      <body className="font-sans antialiased bg-black text-white">
+        <ErrorBoundary>
+          <UserProvider>
+            {children}
+          </UserProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { Toast } from "@/components/ui/Toast";
 import { ArrowLeft, LogOut, Save, User as UserIcon } from "lucide-react";
 import Link from "next/link";
 import { useUser } from "@/context/UserContext";
@@ -19,6 +20,8 @@ export default function Profile() {
     const { user, analysis, selectedStyles, setSelectedStyles, updateProfile, logout, isLoading } = useUser();
     const router = useRouter();
     const [isEditing, setIsEditing] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
     const [formData, setFormData] = useState({
         age: 0,
         weight: 0,
@@ -28,6 +31,7 @@ export default function Profile() {
         glasses: "",
         features: "",
     });
+    const [validationError, setValidationError] = useState("");
 
     useEffect(() => {
         if (!isLoading && !user) {
@@ -49,17 +53,39 @@ export default function Profile() {
         }
     }, [analysis]);
 
+    const validate = (): string => {
+        if (formData.age < 1 || formData.age > 120) return "La edad debe estar entre 1 y 120 años.";
+        if (formData.weight < 20 || formData.weight > 500) return "El peso debe estar entre 20 y 500 kg.";
+        if (formData.height < 50 || formData.height > 250) return "La altura debe estar entre 50 y 250 cm.";
+        return "";
+    };
+
     const handleSave = async () => {
-        await updateProfile({
-            age: Number(formData.age),
-            weight: Number(formData.weight),
-            height: Number(formData.height),
-            gender: formData.gender,
-            bodyType: formData.bodyType,
-            glasses: formData.glasses,
-            features: formData.features,
-        });
-        setIsEditing(false);
+        const error = validate();
+        if (error) {
+            setValidationError(error);
+            setToast({ message: error, type: "error" });
+            return;
+        }
+        setValidationError("");
+        setIsSaving(true);
+        try {
+            await updateProfile({
+                age: Number(formData.age),
+                weight: Number(formData.weight),
+                height: Number(formData.height),
+                gender: formData.gender,
+                bodyType: formData.bodyType,
+                glasses: formData.glasses,
+                features: formData.features,
+            });
+            setIsEditing(false);
+            setToast({ message: "Perfil actualizado correctamente.", type: "success" });
+        } catch {
+            setToast({ message: "No se pudo guardar el perfil. Intenta de nuevo.", type: "error" });
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const toggleStyle = (style: string) => {
@@ -85,16 +111,26 @@ export default function Profile() {
 
     return (
         <main className="min-h-screen bg-black text-white pb-32">
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    isVisible={true}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
+            )}
+
             {/* Header */}
             <header className="p-6 flex justify-between items-center sticky top-0 z-10 bg-black/80 backdrop-blur-md">
                 <Link href="/dashboard">
-                    <button className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-colors">
+                    <button className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-colors" aria-label="Volver al inicio">
                         <ArrowLeft className="w-5 h-5" />
                     </button>
                 </Link>
                 <span className="text-xs font-bold tracking-[0.2em] uppercase">TU PERFIL</span>
                 <button
                     onClick={handleLogout}
+                    aria-label="Cerrar sesión"
                     className="w-10 h-10 rounded-full bg-red-900/20 text-red-500 flex items-center justify-center hover:bg-red-900/40 transition-colors"
                 >
                     <LogOut className="w-5 h-5" />
@@ -119,22 +155,36 @@ export default function Profile() {
                         <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Datos Personales</h3>
                         <button
                             onClick={() => isEditing ? handleSave() : setIsEditing(true)}
+                            disabled={isSaving}
+                            aria-label={isEditing ? "Guardar cambios" : "Editar perfil"}
                             className={cn(
-                                "text-xs font-bold px-4 py-2 rounded-full transition-colors flex items-center gap-2",
+                                "text-xs font-bold px-4 py-2 rounded-full transition-colors flex items-center gap-2 disabled:opacity-60",
                                 isEditing ? "bg-white text-black" : "bg-zinc-900 text-white"
                             )}
                         >
-                            {isEditing ? <><Save className="w-3 h-3" /> GUARDAR</> : "EDITAR"}
+                            {isSaving
+                                ? <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                : isEditing ? <><Save className="w-3 h-3" /> GUARDAR</> : "EDITAR"
+                            }
                         </button>
                     </div>
+
+                    {validationError && (
+                        <p className="text-xs text-red-400 bg-red-900/20 border border-red-900/30 rounded-xl px-4 py-2">
+                            {validationError}
+                        </p>
+                    )}
 
                     <div className="grid gap-4">
                         <div className="grid grid-cols-3 gap-4">
                             {/* Age */}
                             <div className="space-y-2">
-                                <label className="text-xs text-gray-500">Edad</label>
+                                <label htmlFor="age" className="text-xs text-gray-500">Edad</label>
                                 <input
+                                    id="age"
                                     type="number"
+                                    min={1}
+                                    max={120}
                                     value={formData.age}
                                     onChange={(e) => setFormData({ ...formData, age: Number(e.target.value) })}
                                     disabled={!isEditing}
@@ -143,9 +193,12 @@ export default function Profile() {
                             </div>
                             {/* Weight */}
                             <div className="space-y-2">
-                                <label className="text-xs text-gray-500">Peso (kg)</label>
+                                <label htmlFor="weight" className="text-xs text-gray-500">Peso (kg)</label>
                                 <input
+                                    id="weight"
                                     type="number"
+                                    min={20}
+                                    max={500}
                                     value={formData.weight}
                                     onChange={(e) => setFormData({ ...formData, weight: Number(e.target.value) })}
                                     disabled={!isEditing}
@@ -154,9 +207,12 @@ export default function Profile() {
                             </div>
                             {/* Height */}
                             <div className="space-y-2">
-                                <label className="text-xs text-gray-500">Altura (cm)</label>
+                                <label htmlFor="height" className="text-xs text-gray-500">Altura (cm)</label>
                                 <input
+                                    id="height"
                                     type="number"
+                                    min={50}
+                                    max={250}
                                     value={formData.height}
                                     onChange={(e) => setFormData({ ...formData, height: Number(e.target.value) })}
                                     disabled={!isEditing}
@@ -168,12 +224,13 @@ export default function Profile() {
                         {/* Gender */}
                         <div className="space-y-2">
                             <label className="text-xs text-gray-500">Género</label>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2" role="group" aria-label="Seleccionar género">
                                 {GENDERS.map(g => (
                                     <button
                                         key={g}
                                         onClick={() => isEditing && setFormData({ ...formData, gender: g })}
                                         disabled={!isEditing}
+                                        aria-pressed={formData.gender === g}
                                         className={cn(
                                             "flex-1 py-2 rounded-lg text-xs font-medium border transition-all",
                                             formData.gender === g
@@ -190,12 +247,13 @@ export default function Profile() {
                         {/* Body Type */}
                         <div className="space-y-2">
                             <label className="text-xs text-gray-500">Contextura</label>
-                            <div className="grid grid-cols-2 gap-2">
+                            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Seleccionar contextura">
                                 {BODY_TYPES.map(type => (
                                     <button
                                         key={type}
                                         onClick={() => isEditing && setFormData({ ...formData, bodyType: type })}
                                         disabled={!isEditing}
+                                        aria-pressed={formData.bodyType === type}
                                         className={cn(
                                             "py-2 rounded-lg text-xs font-medium border transition-all",
                                             formData.bodyType === type
@@ -211,8 +269,9 @@ export default function Profile() {
 
                         {/* Glasses */}
                         <div className="space-y-2">
-                            <label className="text-xs text-gray-500">Gafas / Lentes</label>
+                            <label htmlFor="glasses" className="text-xs text-gray-500">Gafas / Lentes</label>
                             <input
+                                id="glasses"
                                 type="text"
                                 value={formData.glasses}
                                 onChange={(e) => setFormData({ ...formData, glasses: e.target.value })}
@@ -224,8 +283,9 @@ export default function Profile() {
 
                         {/* Distinctive Features */}
                         <div className="space-y-2">
-                            <label className="text-xs text-gray-500">Rasgos Distintivos</label>
+                            <label htmlFor="features" className="text-xs text-gray-500">Rasgos Distintivos</label>
                             <input
+                                id="features"
                                 type="text"
                                 value={formData.features}
                                 onChange={(e) => setFormData({ ...formData, features: e.target.value })}
@@ -239,12 +299,15 @@ export default function Profile() {
 
                 {/* Styles Selection */}
                 <div className="space-y-4">
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Estilos Preferidos ({selectedStyles.length}/3)</h3>
-                    <div className="flex flex-wrap gap-2">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+                        Estilos Preferidos ({selectedStyles.length}/3)
+                    </h3>
+                    <div className="flex flex-wrap gap-2" role="group" aria-label="Seleccionar estilos preferidos">
                         {STYLES.map(style => (
                             <button
                                 key={style}
                                 onClick={() => toggleStyle(style)}
+                                aria-pressed={selectedStyles.includes(style)}
                                 className={cn(
                                     "px-4 py-2 rounded-full text-xs font-bold border transition-all",
                                     selectedStyles.includes(style)
