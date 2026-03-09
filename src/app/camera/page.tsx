@@ -33,6 +33,7 @@ export default function SmartCamera() {
         reference: false,
         framing: false,
     });
+    const [lightStatus, setLightStatus] = useState<"dark" | "bright" | "ok">("dark");
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -96,6 +97,8 @@ export default function SmartCamera() {
 
                         // Thresholds: Too dark < 40, Too bright > 230 (approx)
                         const isLightOk = avgBrightness > 40 && avgBrightness < 230;
+                        const status = avgBrightness <= 40 ? "dark" : avgBrightness >= 230 ? "bright" : "ok";
+                        setLightStatus(status);
 
                         setChecks(prev => ({
                             ...prev,
@@ -358,7 +361,11 @@ export default function SmartCamera() {
 
                     {/* Indicators - Simplified */}
                     <div className="flex justify-center gap-3 mb-8">
-                        <Indicator label="LUZ" icon={Zap} active={checks.light} />
+                        <Indicator
+                            label={lightStatus === "ok" ? "Iluminación perfecta" : lightStatus === "dark" ? "Demasiado oscuro" : "Demasiado brillante"}
+                            icon={Zap}
+                            active={checks.light}
+                        />
                     </div>
 
                     {/* Capture Button */}
