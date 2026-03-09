@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Toast } from "@/components/ui/Toast";
-import { Camera, Zap, User, Shirt, X, SlidersHorizontal, Loader2 } from "lucide-react";
+import { Camera, Zap, User, Shirt, X, SlidersHorizontal, Loader2, type LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useUser } from "@/context/UserContext";
@@ -394,7 +394,7 @@ export default function SmartCamera() {
     );
 }
 
-function Indicator({ label, icon: Icon, active }: { label: string, icon: any, active: boolean }) {
+function Indicator({ label, icon: Icon, active }: { label: string, icon: LucideIcon, active: boolean }) {
     return (
         <div className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-500",

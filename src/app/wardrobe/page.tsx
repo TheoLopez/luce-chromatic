@@ -4,14 +4,14 @@ import { useState, useRef } from "react";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { ArrowLeft, Grid, Folder, ChevronRight, X, Maximize2, ThumbsUp, ThumbsDown, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useUser } from "@/context/UserContext";
+import { useUser, FavoriteItem } from "@/context/UserContext";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Wardrobe() {
     const { favorites, setFeedback, toggleFavorite, isLoading } = useUser();
     const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null);
-    const [selectedItem, setSelectedItem] = useState<any | null>(null);
+    const [selectedItem, setSelectedItem] = useState<FavoriteItem | null>(null);
 
     const groupedFavorites = favorites.reduce((acc, item) => {
         const key = item.occasion;
@@ -22,7 +22,7 @@ export default function Wardrobe() {
 
     const occasions = Object.keys(groupedFavorites);
 
-    const handleDelete = async (item: any) => {
+    const handleDelete = async (item: FavoriteItem) => {
         if (confirm("¿Estás seguro de que quieres eliminar este look?")) {
             await toggleFavorite(item); // Toggle removes if exists
             setSelectedItem(null);
