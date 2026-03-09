@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useReducer, useState, useEffect, useRef } from "react";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { Toast } from "@/components/ui/Toast";
 import { Sparkles, ArrowLeft, Star, ThumbsUp, ThumbsDown, X, Wand2, Palette, CheckCircle } from "lucide-react";
@@ -21,6 +21,7 @@ const Z = {
 
 type Occasion = "trabajo" | "cita" | "gala" | "casual" | "deporte" | "viaje" | "fiesta" | "boda";
 type Time = "dia" | "atardecer" | "noche";
+type GenerationStep = "palette" | "designing" | "finishing" | null;
 
 const OCCASIONS: { id: Occasion; label: string; emoji: string }[] = [
     { id: "trabajo", label: "Trabajo", emoji: "💼" },
@@ -39,67 +40,114 @@ const TIMES: { id: Time; label: string }[] = [
     { id: "noche", label: "Noche" },
 ];
 
-type GenerationStep = "palette" | "designing" | "finishing" | null;
-
 const GENERATION_STEPS: { id: GenerationStep; label: string; icon: typeof Palette }[] = [
     { id: "palette", label: "Analizando tu paleta...", icon: Palette },
     { id: "designing", label: "Diseñando el outfit...", icon: Wand2 },
     { id: "finishing", label: "Finalizando detalles...", icon: CheckCircle },
 ];
 
+// ─── Reducer ─────────────────────────────────────────────────────────
+
+type SimulatorState = {
+    isGenerating: boolean;
+    generationStep: GenerationStep;
+    generationProgress: number;
+    generatedImage: string | null;
+    generatedColors: { name: string; hex: string }[];
+    currentFavoriteId: string | null;
+    currentFeedback: 'like' | 'dislike' | null;
+    toast: { message: string; type: "success" | "error" | "info" } | null;
+};
+
+type SimulatorAction =
+    | { type: 'START_GENERATION' }
+    | { type: 'SET_PROGRESS'; step: GenerationStep; progress: number }
+    | { type: 'COMPLETE_GENERATION'; image: string; colors: { name: string; hex: string }[] }
+    | { type: 'FAIL_GENERATION' }
+    | { type: 'SET_FAVORITE_ID'; id: string | null }
+    | { type: 'SET_FEEDBACK'; feedback: 'like' | 'dislike' }
+    | { type: 'SHOW_TOAST'; message: string; toastType: "success" | "error" | "info" }
+    | { type: 'CLEAR_TOAST' };
+
+const initialState: SimulatorState = {
+    isGenerating: false,
+    generationStep: null,
+    generationProgress: 0,
+    generatedImage: null,
+    generatedColors: [],
+    currentFavoriteId: null,
+    currentFeedback: null,
+    toast: null,
+};
+
+function simulatorReducer(state: SimulatorState, action: SimulatorAction): SimulatorState {
+    switch (action.type) {
+        case 'START_GENERATION':
+            return { ...state, isGenerating: true, generationStep: "palette", generationProgress: 0, currentFavoriteId: null, currentFeedback: null };
+        case 'SET_PROGRESS':
+            return { ...state, generationStep: action.step, generationProgress: action.progress };
+        case 'COMPLETE_GENERATION':
+            return { ...state, isGenerating: false, generationStep: null, generationProgress: 0, generatedImage: action.image, generatedColors: action.colors };
+        case 'FAIL_GENERATION':
+            return { ...state, isGenerating: false, generationStep: null, generationProgress: 0 };
+        case 'SET_FAVORITE_ID':
+            return { ...state, currentFavoriteId: action.id };
+        case 'SET_FEEDBACK':
+            return { ...state, currentFeedback: action.feedback };
+        case 'SHOW_TOAST':
+            return { ...state, toast: { message: action.message, type: action.toastType } };
+        case 'CLEAR_TOAST':
+            return { ...state, toast: null };
+        default:
+            return state;
+    }
+}
+
+// ─── Component ────────────────────────────────────────────────────────
+
 export default function Simulator() {
     const { userImage, analysis, saveSimulation, toggleFavorite, favorites, isLoading, setFeedback, myClothes } = useUser();
+    const [state, dispatch] = useReducer(simulatorReducer, initialState);
+    const { isGenerating, generationStep, generationProgress, generatedImage, generatedColors, currentFavoriteId, currentFeedback, toast } = state;
+
+    // Simple UI state — no need for reducer
     const [occasion, setOccasion] = useState<Occasion>("trabajo");
     const [time, setTime] = useState<Time>("dia");
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generationStep, setGenerationStep] = useState<GenerationStep>(null);
-    const [generationProgress, setGenerationProgress] = useState(0);
-    const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-    const [generatedColors, setGeneratedColors] = useState<{ name: string; hex: string }[]>([]);
-    const [currentFavoriteId, setCurrentFavoriteId] = useState<string | null>(null);
-    const [currentFeedback, setCurrentFeedback] = useState<'like' | 'dislike' | null>(null);
-    const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
     const [selectedClothes, setSelectedClothes] = useState<string[]>([]);
     const [showClothesModal, setShowClothesModal] = useState(false);
     const [isZoomed, setIsZoomed] = useState(false);
     const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-    const showNotification = (message: string, type: "success" | "error" | "info" = "info") => {
-        setToast({ message, type });
+    const showNotification = (message: string, toastType: "success" | "error" | "info" = "info") => {
+        dispatch({ type: 'SHOW_TOAST', message, toastType });
     };
 
-    // Simulate progress through steps during generation
     const startProgressSimulation = () => {
-        setGenerationStep("palette");
-        setGenerationProgress(0);
         let elapsed = 0;
-        const totalTime = 30000; // 30 seconds expected
-
+        const totalTime = 30000;
         progressTimerRef.current = setInterval(() => {
             elapsed += 300;
             const raw = Math.min(elapsed / totalTime, 0.95);
-            setGenerationProgress(raw * 100);
-
-            if (raw < 0.35) setGenerationStep("palette");
-            else if (raw < 0.75) setGenerationStep("designing");
-            else setGenerationStep("finishing");
+            const step: GenerationStep = raw < 0.35 ? "palette" : raw < 0.75 ? "designing" : "finishing";
+            dispatch({ type: 'SET_PROGRESS', step, progress: raw * 100 });
         }, 300);
     };
 
-    const stopProgressSimulation = () => {
+    const stopProgressSimulation = (success: boolean, image?: string, colors?: { name: string; hex: string }[]) => {
         if (progressTimerRef.current) {
             clearInterval(progressTimerRef.current);
             progressTimerRef.current = null;
         }
-        setGenerationProgress(100);
-        setTimeout(() => {
-            setGenerationStep(null);
-            setGenerationProgress(0);
-        }, 400);
+        if (success && image && colors) {
+            dispatch({ type: 'COMPLETE_GENERATION', image, colors });
+        } else {
+            dispatch({ type: 'FAIL_GENERATION' });
+        }
     };
 
     const handleFeedback = async (type: 'like' | 'dislike') => {
         if (!generatedImage) return;
+        dispatch({ type: 'SET_FEEDBACK', feedback: type });
 
         if (type === 'like') {
             if (!currentFavoriteId) await handleToggleFavorite();
@@ -108,31 +156,25 @@ export default function Simulator() {
             showNotification("Gracias por tu opinión", "info");
         }
 
-        setCurrentFeedback(type);
         if (currentFavoriteId) await setFeedback(currentFavoriteId, type);
     };
 
     const handleGenerate = async () => {
-        if (!analysis) return;
-        setIsGenerating(true);
-        setCurrentFavoriteId(null);
-        setCurrentFeedback(null);
+        if (!analysis || !userImage) return;
+        dispatch({ type: 'START_GENERATION' });
         startProgressSimulation();
-
         try {
             const selectedItems = myClothes.filter(c => selectedClothes.includes(c.id));
-            if (!userImage) return;
-            const { image, colors } = await generateOutfit(analysis, occasion, time, selectedItems, userImage);
-            stopProgressSimulation();
-            setGeneratedImage(image);
-            setGeneratedColors(colors);
+            const { image, colors } = await generateOutfit(
+                analysis as unknown as Record<string, unknown>,
+                occasion, time, selectedItems, userImage
+            );
+            stopProgressSimulation(true, image, colors);
             saveSimulation(image);
         } catch (error) {
-            console.error("Generation failed:", error);
-            stopProgressSimulation();
-            showNotification("Error al generar el outfit. Intenta de nuevo.", "error");
-        } finally {
-            setIsGenerating(false);
+            stopProgressSimulation(false);
+            const msg = error instanceof Error ? error.message : "Error al generar el outfit. Intenta de nuevo.";
+            showNotification(msg, "error");
         }
     };
 
@@ -144,7 +186,7 @@ export default function Simulator() {
             const itemToRemove = favorites.find(f => f.id === currentFavoriteId);
             if (itemToRemove) {
                 await toggleFavorite(itemToRemove);
-                setCurrentFavoriteId(null);
+                dispatch({ type: 'SET_FAVORITE_ID', id: null });
                 showNotification("Eliminado de favoritos");
             }
             return;
@@ -153,18 +195,17 @@ export default function Simulator() {
         const id = uuidv4();
         const item: FavoriteItem = { id, url: imageToSave, occasion, timestamp: Date.now() };
         await toggleFavorite(item);
-        setCurrentFavoriteId(id);
+        dispatch({ type: 'SET_FAVORITE_ID', id });
         showNotification("¡Guardado en favoritos!", "success");
     };
 
     useEffect(() => {
         if (!generatedImage && userImage) {
             const fav = favorites.find(f => f.url === userImage);
-            if (fav) setCurrentFavoriteId(fav.id);
+            if (fav) dispatch({ type: 'SET_FAVORITE_ID', id: fav.id });
         }
     }, [userImage, generatedImage, favorites]);
 
-    // Escape closes zoom
     useEffect(() => {
         const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setIsZoomed(false); };
         if (isZoomed) document.addEventListener("keydown", handler);
@@ -206,7 +247,7 @@ export default function Simulator() {
         <main className="h-screen bg-black text-white flex flex-col overflow-hidden relative">
             {/* Toast */}
             {toast && (
-                <Toast message={toast.message} isVisible type={toast.type} onClose={() => setToast(null)} />
+                <Toast message={toast.message} isVisible type={toast.type} onClose={() => dispatch({ type: 'CLEAR_TOAST' })} />
             )}
 
             {/* Zoom Modal */}

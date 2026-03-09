@@ -207,7 +207,8 @@ export default function SmartCamera() {
         if (userImage) {
             try {
                 const result = await analyzeImage(userImage, tempStyles);
-                setAnalysis(result);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setAnalysis(result as any);
                 router.push("/dashboard");
             } catch (error) {
                 console.error("Analysis failed:", error);
