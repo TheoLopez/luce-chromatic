@@ -4,11 +4,12 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Toast } from "@/components/ui/Toast";
-import { Camera, Zap, User, Shirt, X, SlidersHorizontal, Loader2 } from "lucide-react";
+import { Camera, Zap, User, Shirt, X, SlidersHorizontal, Loader2, type LucideIcon } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { useUser } from "@/context/UserContext";
 import { analyzeImage } from "@/lib/gemini";
+import { cn } from "@/lib/utils";
 
 export default function SmartCamera() {
     const router = useRouter();
@@ -32,6 +33,7 @@ export default function SmartCamera() {
         reference: false,
         framing: false,
     });
+    const [lightStatus, setLightStatus] = useState<"dark" | "bright" | "ok">("dark");
     const [showToast, setShowToast] = useState(false);
     const [toastMessage, setToastMessage] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -95,6 +97,8 @@ export default function SmartCamera() {
 
                         // Thresholds: Too dark < 40, Too bright > 230 (approx)
                         const isLightOk = avgBrightness > 40 && avgBrightness < 230;
+                        const status = avgBrightness <= 40 ? "dark" : avgBrightness >= 230 ? "bright" : "ok";
+                        setLightStatus(status);
 
                         setChecks(prev => ({
                             ...prev,
@@ -203,7 +207,8 @@ export default function SmartCamera() {
         if (userImage) {
             try {
                 const result = await analyzeImage(userImage, tempStyles);
-                setAnalysis(result);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                setAnalysis(result as any);
                 router.push("/dashboard");
             } catch (error) {
                 console.error("Analysis failed:", error);
@@ -357,7 +362,11 @@ export default function SmartCamera() {
 
                     {/* Indicators - Simplified */}
                     <div className="flex justify-center gap-3 mb-8">
-                        <Indicator label="LUZ" icon={Zap} active={checks.light} />
+                        <Indicator
+                            label={lightStatus === "ok" ? "Iluminación perfecta" : lightStatus === "dark" ? "Demasiado oscuro" : "Demasiado brillante"}
+                            icon={Zap}
+                            active={checks.light}
+                        />
                     </div>
 
                     {/* Capture Button */}
@@ -385,7 +394,7 @@ export default function SmartCamera() {
     );
 }
 
-function Indicator({ label, icon: Icon, active }: { label: string, icon: any, active: boolean }) {
+function Indicator({ label, icon: Icon, active }: { label: string, icon: LucideIcon, active: boolean }) {
     return (
         <div className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-full border transition-all duration-500",
@@ -400,6 +409,3 @@ function Indicator({ label, icon: Icon, active }: { label: string, icon: any, ac
     );
 }
 
-function cn(...classes: (string | undefined | null | false)[]) {
-    return classes.filter(Boolean).join(' ');
-}
