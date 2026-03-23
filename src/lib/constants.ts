@@ -1,6 +1,7 @@
 // ─── Gemini / Vertex AI ───────────────────────────────────────────────
 export const GEMINI_MODEL = "gemini-2.5-flash-lite" as const;
-export const IMAGEN_MODEL = "imagen-3.0-generate-001" as const;
+// "Nano Banana" — GA model with identity preservation from reference photos
+export const GEMINI_IMAGE_GEN_MODEL = "gemini-2.5-flash-image" as const;
 
 // ─── AI Reliability ───────────────────────────────────────────────────
 export const GEMINI_RETRY_ATTEMPTS = 3;
@@ -31,6 +32,3 @@ export const WEIGHT_MAX_KG = 500;
 export const HEIGHT_MIN_CM = 50;
 export const HEIGHT_MAX_CM = 250;
 
-// ─── Image Generation Prompt Suffix ──────────────────────────────────
-export const IMAGEN_QUALITY_SUFFIX =
-    " -- preserve face details, photorealistic, 8k, exact facial features, same body type";

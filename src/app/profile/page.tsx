@@ -33,11 +33,16 @@ export default function Profile() {
     });
     const [validationError, setValidationError] = useState("");
 
+    // Auth guard: guests → login;  logged-in without analysis → camera
     useEffect(() => {
-        if (!isLoading && !user) {
-            router.push("/");
+        if (!isLoading) {
+            if (!user) {
+                router.replace("/");
+            } else if (!analysis) {
+                router.replace("/camera");
+            }
         }
-    }, [user, isLoading, router]);
+    }, [user, analysis, isLoading, router]);
 
     useEffect(() => {
         if (analysis) {
@@ -55,8 +60,8 @@ export default function Profile() {
 
     const validate = (): string => {
         if (formData.age < 1 || formData.age > 120) return "La edad debe estar entre 1 y 120 años.";
-        if (formData.weight < 20 || formData.weight > 500) return "El peso debe estar entre 20 y 500 kg.";
-        if (formData.height < 50 || formData.height > 250) return "La altura debe estar entre 50 y 250 cm.";
+        if (formData.weight !== 0 && (formData.weight < 20 || formData.weight > 500)) return "El peso debe estar entre 20 y 500 kg.";
+        if (formData.height !== 0 && (formData.height < 50 || formData.height > 250)) return "La altura debe estar entre 50 y 250 cm.";
         return "";
     };
 
@@ -64,7 +69,6 @@ export default function Profile() {
         const error = validate();
         if (error) {
             setValidationError(error);
-            setToast({ message: error, type: "error" });
             return;
         }
         setValidationError("");
@@ -101,9 +105,10 @@ export default function Profile() {
         router.push("/");
     };
 
+    // While loading, or about to redirect (no user / no analysis)
     if (isLoading || !user || !analysis) {
         return (
-            <main className="min-h-screen bg-black text-white flex items-center justify-center">
+            <main className="h-screen bg-black text-white flex items-center justify-center">
                 <div className="w-8 h-8 rounded-full border-2 border-white border-t-transparent animate-spin" />
             </main>
         );

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { Toast } from "@/components/ui/Toast";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
-import { ArrowLeft, Plus, Camera, X, Trash2, Shirt, Scissors, Footprints, Watch, Upload, AlertCircle, Settings } from "lucide-react";
+import { ArrowLeft, Plus, Camera, X, Trash2, Shirt, Scissors, Footprints, Watch, Upload, AlertCircle, Settings, Check, CalendarDays } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useUser, ClothingItem } from "@/context/UserContext";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,11 +25,24 @@ const categories = [
 type CameraError = "permission_denied" | "not_available" | "generic" | null;
 
 export default function MyClothes() {
-    const { myClothes, addClothingItem, removeClothingItem, isLoading } = useUser();
+    const { user, myClothes, addClothingItem, removeClothingItem, isLoading } = useUser();
+    const router = useRouter();
+
+    // Auth guard: clothing items require an authenticated user
+    useEffect(() => {
+        if (!isLoading && !user) {
+            router.replace("/");
+        }
+    }, [user, isLoading, router]);
     const [isAdding, setIsAdding] = useState(false);
     const [newImage, setNewImage] = useState<string | null>(null);
+    const [name, setName] = useState("");
     const [description, setDescription] = useState("");
     const [category, setCategory] = useState<ClothingItem['category']>('superior');
+    const [color, setColor] = useState("");
+    const [material, setMaterial] = useState("");
+    const [texture, setTexture] = useState("");
+    const [type, setType] = useState("");
     const [isSaving, setIsSaving] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -43,6 +57,25 @@ export default function MyClothes() {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
 
+    // When the camera modal opens, connect the stream to the video element
+    // This is critical because the <video> element only exists in DOM when isCameraOpen=true,
+    // so we can't set srcObject inside startCamera() (element doesn't exist yet).
+    useEffect(() => {
+        if (isCameraOpen && videoRef.current && streamRef.current) {
+            videoRef.current.srcObject = streamRef.current;
+            videoRef.current.play().catch(() => {});
+        }
+    }, [isCameraOpen]);
+
+    // Clean up camera stream on unmount
+    useEffect(() => {
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+        };
+    }, []);
+
     const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
         setToast({ message, type });
     };
@@ -51,13 +84,17 @@ export default function MyClothes() {
         setIsAnalyzing(true);
         try {
             const result = await describeClothingItem(base64Image);
-            setDescription(result.description);
+            setName(result.name || "");
+            setDescription(result.description || "");
+            setColor(result.color || "");
+            setMaterial(result.material || "");
+            setTexture(result.texture || "");
+            setType(result.type || "");
             if (result.category) {
                 setCategory(result.category as ClothingItem['category']);
             }
         } catch (error) {
             console.error("Failed to generate description", error);
-            // Continue with empty description — user can fill it in
         } finally {
             setIsAnalyzing(false);
         }
@@ -76,6 +113,8 @@ export default function MyClothes() {
             };
             reader.readAsDataURL(file);
         }
+        // Reset so the same file can be selected again
+        e.target.value = "";
     };
 
     const startCamera = async () => {
@@ -90,11 +129,10 @@ export default function MyClothes() {
                 video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 1280 } }
             });
             streamRef.current = stream;
-            if (videoRef.current) {
-                videoRef.current.srcObject = stream;
-            }
-            setIsCameraOpen(true);
+            // Don't set srcObject here — the <video> element doesn't exist yet.
+            // The useEffect [isCameraOpen] will connect the stream once the video renders.
             setShowSourceMenu(false);
+            setIsCameraOpen(true);
         } catch (err) {
             console.error("Error accessing camera:", err);
             const error = err as DOMException;
@@ -121,35 +159,54 @@ export default function MyClothes() {
     };
 
     const handleCapture = () => {
-        if (videoRef.current && canvasRef.current) {
-            const video = videoRef.current;
-            const canvas = canvasRef.current;
-            const size = Math.min(video.videoWidth, video.videoHeight);
-            canvas.width = size;
-            canvas.height = size;
-            const ctx = canvas.getContext("2d");
-            if (ctx) {
-                const sx = (video.videoWidth - size) / 2;
-                const sy = (video.videoHeight - size) / 2;
-                ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
-                const base64Image = canvas.toDataURL("image/jpeg", 0.8);
-                setNewImage(base64Image);
-                stopCamera();
-                setIsAdding(true);
-                generateDescription(base64Image);
-            }
+        if (!videoRef.current || !canvasRef.current) return;
+        const video = videoRef.current;
+        const canvas = canvasRef.current;
+
+        // Ensure video has loaded dimensions
+        if (video.videoWidth === 0 || video.videoHeight === 0) {
+            showToast("La cámara aún no está lista. Espera un momento.", "info");
+            return;
+        }
+
+        const size = Math.min(video.videoWidth, video.videoHeight);
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+            const sx = (video.videoWidth - size) / 2;
+            const sy = (video.videoHeight - size) / 2;
+            ctx.drawImage(video, sx, sy, size, size, 0, 0, size, size);
+            const base64Image = canvas.toDataURL("image/jpeg", 0.8);
+            stopCamera();
+            setNewImage(base64Image);
+            setIsAdding(true);
+            generateDescription(base64Image);
         }
     };
 
+    const resetForm = () => {
+        setIsAdding(false);
+        setNewImage(null);
+        setName("");
+        setDescription("");
+        setCategory('superior');
+        setColor("");
+        setMaterial("");
+        setTexture("");
+        setType("");
+    };
+
     const handleSave = async () => {
-        if (!newImage || !description) return;
+        if (!newImage || !name) return;
         setIsSaving(true);
         try {
-            await addClothingItem({ imageBase64: newImage, category, description });
-            setIsAdding(false);
-            setNewImage(null);
-            setDescription("");
-            setCategory('superior');
+            await addClothingItem({
+                imageBase64: newImage, category, name,
+                description: description || name,
+                color, material, texture, type,
+            });
+            resetForm();
             showToast("Prenda guardada correctamente.", "success");
         } catch (error) {
             console.error("Failed to save item", error);
@@ -193,6 +250,15 @@ export default function MyClothes() {
         },
     };
 
+    // While loading or about to redirect (guest)
+    if (isLoading || !user) {
+        return (
+            <main className="h-screen bg-black text-white flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            </main>
+        );
+    }
+
     return (
         <main className="min-h-screen bg-black text-white pb-32">
             {toast && (
@@ -212,11 +278,18 @@ export default function MyClothes() {
 
             {/* Header */}
             <header className="p-6 flex justify-between items-center sticky top-0 z-10 bg-black/80 backdrop-blur-md">
-                <Link href="/dashboard">
-                    <button aria-label="Volver al inicio" className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-colors">
-                        <ArrowLeft className="w-5 h-5" />
-                    </button>
-                </Link>
+                <div className="flex gap-2">
+                    <Link href="/dashboard">
+                        <button aria-label="Volver al inicio" className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-colors">
+                            <ArrowLeft className="w-5 h-5" />
+                        </button>
+                    </Link>
+                    <Link href="/planner">
+                        <button aria-label="Planificador de outfits" className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white hover:bg-zinc-800 transition-colors">
+                            <CalendarDays className="w-5 h-5" />
+                        </button>
+                    </Link>
+                </div>
                 <span className="text-xs font-bold tracking-[0.2em] uppercase">MI ROPA</span>
                 <button
                     aria-label="Agregar prenda"
@@ -356,81 +429,144 @@ export default function MyClothes() {
                         exit={{ opacity: 0, y: 20 }}
                         className="fixed inset-0 z-50 bg-black flex flex-col"
                     >
-                        <header className="p-6 flex justify-between items-center">
+                        <header className="p-6 flex justify-between items-center sticky top-0 z-10 bg-black/80 backdrop-blur-md">
                             <button
                                 aria-label="Cancelar"
-                                onClick={() => { setIsAdding(false); setNewImage(null); setDescription(""); }}
+                                onClick={resetForm}
                                 className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center"
                             >
                                 <X className="w-5 h-5" />
                             </button>
                             <span className="text-xs font-bold tracking-[0.2em] uppercase">Nueva Prenda</span>
-                            <div className="w-10 h-10" />
+                            <button
+                                aria-label="Guardar prenda"
+                                onClick={handleSave}
+                                disabled={isSaving || isAnalyzing || !name}
+                                className={cn(
+                                    "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                                    isSaving || isAnalyzing || !name
+                                        ? "bg-zinc-800 text-gray-600 cursor-not-allowed"
+                                        : "bg-white text-black hover:bg-gray-200 active:scale-95"
+                                )}
+                            >
+                                {isSaving ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                ) : (
+                                    <Check className="w-5 h-5" />
+                                )}
+                            </button>
                         </header>
 
-                        <div className="flex-1 overflow-y-auto px-6 pb-32 space-y-6">
+                        <div className="flex-1 overflow-y-auto px-6 pb-8 space-y-5">
                             {/* Image Preview */}
                             <div className="aspect-square rounded-2xl overflow-hidden bg-zinc-900">
                                 <img src={newImage} alt="Nueva prenda" className="w-full h-full object-cover" />
                             </div>
 
-                            {/* Category */}
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Categoría</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {categories.map(cat => (
-                                        <button
-                                            key={cat.id}
-                                            onClick={() => setCategory(cat.id)}
-                                            aria-pressed={category === cat.id}
-                                            className={cn(
-                                                "flex items-center gap-3 p-3 rounded-xl border transition-all",
-                                                category === cat.id
-                                                    ? "bg-white text-black border-white"
-                                                    : "bg-zinc-900 text-gray-400 border-white/10"
-                                            )}
-                                        >
-                                            <cat.icon className="w-4 h-4" />
-                                            <span className="text-sm font-medium">{cat.label}</span>
-                                        </button>
-                                    ))}
+                            {isAnalyzing ? (
+                                <div className="flex items-center gap-3 p-4 bg-zinc-900 rounded-xl border border-white/10">
+                                    <Loader2 className="w-4 h-4 animate-spin text-white/50" />
+                                    <span className="text-sm text-gray-400">Analizando prenda con IA...</span>
                                 </div>
-                            </div>
-
-                            {/* Description */}
-                            <div className="space-y-3">
-                                <label htmlFor="description" className="text-xs font-bold text-gray-400 uppercase tracking-widest">
-                                    Descripción
-                                    {isAnalyzing && <span className="ml-2 text-white/50 normal-case font-normal">Analizando con IA...</span>}
-                                </label>
-                                {isAnalyzing ? (
-                                    <div className="flex items-center gap-3 p-4 bg-zinc-900 rounded-xl border border-white/10">
-                                        <Loader2 className="w-4 h-4 animate-spin text-white/50" />
-                                        <span className="text-sm text-gray-400">Generando descripción...</span>
+                            ) : (
+                                <>
+                                    {/* Name */}
+                                    <div className="space-y-2">
+                                        <label htmlFor="name" className="text-xs font-bold text-gray-400 uppercase tracking-widest">Nombre</label>
+                                        <input
+                                            id="name"
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            placeholder="Ej: Camisa Oxford"
+                                            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600"
+                                        />
                                     </div>
-                                ) : (
-                                    <textarea
-                                        id="description"
-                                        value={description}
-                                        onChange={(e) => setDescription(e.target.value)}
-                                        placeholder="Ej: Camisa azul marino de algodón, estilo formal"
-                                        rows={3}
-                                        className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600 resize-none"
-                                    />
-                                )}
-                            </div>
-                        </div>
 
-                        {/* Save Button */}
-                        <div className="absolute bottom-0 left-0 right-0 p-6 bg-black/80 backdrop-blur-md">
-                            <Button
-                                onClick={handleSave}
-                                disabled={isSaving || isAnalyzing || !description}
-                                isLoading={isSaving}
-                                className="w-full"
-                            >
-                                GUARDAR PRENDA
-                            </Button>
+                                    {/* Category */}
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Categoría</label>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {categories.map(cat => (
+                                                <button
+                                                    key={cat.id}
+                                                    onClick={() => setCategory(cat.id)}
+                                                    aria-pressed={category === cat.id}
+                                                    className={cn(
+                                                        "flex items-center gap-3 p-3 rounded-xl border transition-all",
+                                                        category === cat.id
+                                                            ? "bg-white text-black border-white"
+                                                            : "bg-zinc-900 text-gray-400 border-white/10"
+                                                    )}
+                                                >
+                                                    <cat.icon className="w-4 h-4" />
+                                                    <span className="text-sm font-medium">{cat.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Color & Material row */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label htmlFor="color" className="text-xs font-bold text-gray-400 uppercase tracking-widest">Color</label>
+                                            <input
+                                                id="color"
+                                                value={color}
+                                                onChange={(e) => setColor(e.target.value)}
+                                                placeholder="Ej: Azul marino"
+                                                className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label htmlFor="material" className="text-xs font-bold text-gray-400 uppercase tracking-widest">Material</label>
+                                            <input
+                                                id="material"
+                                                value={material}
+                                                onChange={(e) => setMaterial(e.target.value)}
+                                                placeholder="Ej: Algodón"
+                                                className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Texture & Type row */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label htmlFor="texture" className="text-xs font-bold text-gray-400 uppercase tracking-widest">Textura</label>
+                                            <input
+                                                id="texture"
+                                                value={texture}
+                                                onChange={(e) => setTexture(e.target.value)}
+                                                placeholder="Ej: Lisa"
+                                                className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label htmlFor="type" className="text-xs font-bold text-gray-400 uppercase tracking-widest">Tipo</label>
+                                            <input
+                                                id="type"
+                                                value={type}
+                                                onChange={(e) => setType(e.target.value)}
+                                                placeholder="Ej: Camisa"
+                                                className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Description */}
+                                    <div className="space-y-2">
+                                        <label htmlFor="description" className="text-xs font-bold text-gray-400 uppercase tracking-widest">Descripción</label>
+                                        <textarea
+                                            id="description"
+                                            value={description}
+                                            onChange={(e) => setDescription(e.target.value)}
+                                            placeholder="Descripción detallada de la prenda..."
+                                            rows={2}
+                                            className="w-full bg-zinc-900 border border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-white/30 placeholder:text-gray-600 resize-none"
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </motion.div>
                 )}
@@ -467,10 +603,27 @@ export default function MyClothes() {
                             <ZoomableImage src={selectedItem.url} />
                         </div>
 
-                        <div className="absolute bottom-10 left-0 right-0 p-6 text-center pointer-events-none">
-                            <p className="text-white/80 text-sm font-medium bg-black/50 backdrop-blur-md inline-block px-4 py-2 rounded-full">
-                                {selectedItem.description}
-                            </p>
+                        <div className="absolute bottom-10 left-0 right-0 px-6 pointer-events-none">
+                            <div className="bg-black/60 backdrop-blur-md rounded-2xl p-4 max-w-sm mx-auto space-y-1">
+                                <p className="text-white font-bold text-sm">{selectedItem.name || selectedItem.description}</p>
+                                {selectedItem.description && selectedItem.name && (
+                                    <p className="text-gray-300 text-xs">{selectedItem.description}</p>
+                                )}
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    {selectedItem.color && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300">{selectedItem.color}</span>
+                                    )}
+                                    {selectedItem.material && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300">{selectedItem.material}</span>
+                                    )}
+                                    {selectedItem.texture && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300">{selectedItem.texture}</span>
+                                    )}
+                                    {selectedItem.type && (
+                                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-gray-300">{selectedItem.type}</span>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -487,21 +640,7 @@ export default function MyClothes() {
 
             {/* Main Content */}
             <div className="px-6 space-y-8">
-                {isLoading ? (
-                    /* Skeleton loaders */
-                    <div className="space-y-8">
-                        {[0, 1].map(section => (
-                            <div key={section} className="space-y-4">
-                                <div className="h-4 w-24 bg-zinc-800 rounded-full animate-pulse" />
-                                <div className="grid grid-cols-2 gap-4">
-                                    {[0, 1, 2, 3].map(i => (
-                                        <div key={i} className="aspect-[3/4] rounded-2xl bg-zinc-900 animate-pulse" />
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : myClothes.length === 0 ? (
+                {myClothes.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4 text-center opacity-50">
                         <Shirt className="w-16 h-16" />
                         <p className="text-sm">No has agregado ropa aún.</p>
@@ -527,13 +666,14 @@ export default function MyClothes() {
                                             onClick={() => setSelectedItem(item)}
                                             className="group relative aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border border-white/10 cursor-pointer"
                                         >
-                                            <img src={item.url} alt={item.description} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
-                                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-4">
-                                                <p className="text-xs text-white line-clamp-2 mb-2">{item.description}</p>
+                                            <img src={item.url} alt={item.name || item.description} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-3">
+                                                <p className="text-xs font-bold text-white truncate">{item.name || item.description}</p>
+                                                {item.color && <p className="text-[10px] text-gray-300 truncate">{item.color}{item.material ? ` · ${item.material}` : ''}</p>}
                                                 <button
-                                                    aria-label={`Eliminar ${item.description}`}
+                                                    aria-label={`Eliminar ${item.name || item.description}`}
                                                     onClick={(e) => { e.stopPropagation(); setConfirmDelete(item); }}
-                                                    className="self-end p-2 bg-red-500/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors"
+                                                    className="self-end mt-1 p-2 bg-red-500/20 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
                                                 >
                                                     <Trash2 className="w-4 h-4" />
                                                 </button>

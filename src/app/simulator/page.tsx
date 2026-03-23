@@ -3,10 +3,11 @@
 import { useReducer, useState, useEffect, useRef } from "react";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { Toast } from "@/components/ui/Toast";
-import { Sparkles, ArrowLeft, Star, ThumbsUp, ThumbsDown, X, Wand2, Palette, CheckCircle } from "lucide-react";
+import { Sparkles, ArrowLeft, Heart, ThumbsUp, ThumbsDown, X, Wand2, Palette, CheckCircle } from "lucide-react";
 import { useUser, FavoriteItem } from "@/context/UserContext";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { generateOutfit } from "@/lib/gemini";
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from "framer-motion";
@@ -107,6 +108,14 @@ function simulatorReducer(state: SimulatorState, action: SimulatorAction): Simul
 
 export default function Simulator() {
     const { userImage, analysis, saveSimulation, toggleFavorite, favorites, isLoading, setFeedback, myClothes } = useUser();
+    const router = useRouter();
+
+    // Redirect to camera if no user image after loading completes
+    useEffect(() => {
+        if (!isLoading && !userImage) {
+            router.replace("/camera");
+        }
+    }, [isLoading, userImage, router]);
     const [state, dispatch] = useReducer(simulatorReducer, initialState);
     const { isGenerating, generationStep, generationProgress, generatedImage, generatedColors, currentFavoriteId, currentFeedback, toast } = state;
 
@@ -116,6 +125,7 @@ export default function Simulator() {
     const [selectedClothes, setSelectedClothes] = useState<string[]>([]);
     const [showClothesModal, setShowClothesModal] = useState(false);
     const [isZoomed, setIsZoomed] = useState(false);
+    const [isSavingFavorite, setIsSavingFavorite] = useState(false);
     const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const showNotification = (message: string, toastType: "success" | "error" | "info" = "info") => {
@@ -146,17 +156,32 @@ export default function Simulator() {
     };
 
     const handleFeedback = async (type: 'like' | 'dislike') => {
-        if (!generatedImage) return;
+        if (!generatedImage || isSavingFavorite) return;
         dispatch({ type: 'SET_FEEDBACK', feedback: type });
 
-        if (type === 'like') {
-            if (!currentFavoriteId) await handleToggleFavorite();
-            showNotification("¡Guardado en favoritos!", "success");
-        } else {
-            showNotification("Gracias por tu opinión", "info");
+        try {
+            if (type === 'like') {
+                if (!currentFavoriteId) {
+                    setIsSavingFavorite(true);
+                    const id = uuidv4();
+                    const item: FavoriteItem = { id, url: generatedImage, occasion, timestamp: Date.now() };
+                    await toggleFavorite(item);
+                    dispatch({ type: 'SET_FAVORITE_ID', id });
+                    await setFeedback(id, type);
+                    setIsSavingFavorite(false);
+                } else {
+                    await setFeedback(currentFavoriteId, type);
+                }
+                showNotification("¡Guardado en favoritos!", "success");
+            } else {
+                if (currentFavoriteId) await setFeedback(currentFavoriteId, type);
+                showNotification("Gracias por tu opinión", "info");
+            }
+        } catch (error) {
+            console.error("Error saving feedback:", error);
+            setIsSavingFavorite(false);
+            showNotification("Error al guardar. Intenta de nuevo.", "error");
         }
-
-        if (currentFavoriteId) await setFeedback(currentFavoriteId, type);
     };
 
     const handleGenerate = async () => {
@@ -180,23 +205,31 @@ export default function Simulator() {
 
     const handleToggleFavorite = async () => {
         const imageToSave = generatedImage || userImage;
-        if (!imageToSave) return;
+        if (!imageToSave || isSavingFavorite) return;
 
-        if (currentFavoriteId) {
-            const itemToRemove = favorites.find(f => f.id === currentFavoriteId);
-            if (itemToRemove) {
-                await toggleFavorite(itemToRemove);
-                dispatch({ type: 'SET_FAVORITE_ID', id: null });
-                showNotification("Eliminado de favoritos");
+        setIsSavingFavorite(true);
+        try {
+            if (currentFavoriteId) {
+                const itemToRemove = favorites.find(f => f.id === currentFavoriteId);
+                if (itemToRemove) {
+                    await toggleFavorite(itemToRemove);
+                    dispatch({ type: 'SET_FAVORITE_ID', id: null });
+                    showNotification("Eliminado de favoritos");
+                }
+                return;
             }
-            return;
-        }
 
-        const id = uuidv4();
-        const item: FavoriteItem = { id, url: imageToSave, occasion, timestamp: Date.now() };
-        await toggleFavorite(item);
-        dispatch({ type: 'SET_FAVORITE_ID', id });
-        showNotification("¡Guardado en favoritos!", "success");
+            const id = uuidv4();
+            const item: FavoriteItem = { id, url: imageToSave, occasion, timestamp: Date.now() };
+            await toggleFavorite(item);
+            dispatch({ type: 'SET_FAVORITE_ID', id });
+            showNotification("¡Guardado en favoritos!", "success");
+        } catch (error) {
+            console.error("Error toggling favorite:", error);
+            showNotification("Error al guardar favorito. Intenta de nuevo.", "error");
+        } finally {
+            setIsSavingFavorite(false);
+        }
     };
 
     useEffect(() => {
@@ -222,23 +255,11 @@ export default function Simulator() {
         setSelectedClothes(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
     };
 
-    if (isLoading) {
+    // While loading or about to redirect (no image)
+    if (isLoading || !userImage) {
         return (
             <main className="h-screen bg-black text-white flex items-center justify-center">
                 <div className="w-8 h-8 rounded-full border-2 border-white border-t-transparent animate-spin" />
-            </main>
-        );
-    }
-
-    if (!userImage) {
-        return (
-            <main className="h-screen bg-black text-white flex items-center justify-center">
-                <div className="text-center space-y-4">
-                    <p className="text-gray-400">No hay imagen para simular</p>
-                    <Link href="/camera">
-                        <button className="text-sm font-bold underline">Ir a Cámara</button>
-                    </Link>
-                </div>
             </main>
         );
     }
@@ -411,12 +432,14 @@ export default function Simulator() {
                         aria-label={isFavorite ? "Quitar de favoritos" : "Guardar en favoritos"}
                         aria-pressed={isFavorite}
                         onClick={handleToggleFavorite}
+                        disabled={isSavingFavorite}
                         className={cn(
-                            "w-8 h-8 rounded-full flex items-center justify-center transition-colors",
-                            isFavorite ? "bg-yellow-500 text-black" : "bg-zinc-900/80 text-white"
+                            "w-8 h-8 rounded-full flex items-center justify-center transition-all",
+                            isSavingFavorite && "animate-pulse opacity-70",
+                            isFavorite ? "bg-red-500 text-white" : "bg-zinc-900/80 text-white"
                         )}
                     >
-                        <Star className={cn("w-4 h-4", isFavorite && "fill-black")} />
+                        <Heart className={cn("w-4 h-4", isFavorite && "fill-white")} />
                     </button>
                 ) : (
                     <div className="w-8 h-8" />

@@ -1,17 +1,32 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect } from "react";
 import { BottomNav } from "@/components/ui/BottomNav";
+import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { ArrowLeft, Grid, Folder, ChevronRight, X, Maximize2, ThumbsUp, ThumbsDown, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { useUser, FavoriteItem } from "@/context/UserContext";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function Wardrobe() {
-    const { favorites, setFeedback, toggleFavorite, isLoading } = useUser();
+    const { user, favorites, setFeedback, toggleFavorite, isLoading } = useUser();
+    const router = useRouter();
+
+    // Auth guard: favorites require an authenticated user
+    useEffect(() => {
+        if (!isLoading && !user) {
+            router.replace("/");
+        }
+    }, [user, isLoading, router]);
     const [selectedOccasion, setSelectedOccasion] = useState<string | null>(null);
-    const [selectedItem, setSelectedItem] = useState<FavoriteItem | null>(null);
+    const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+    // Always derive from favorites so feedback state stays in sync
+    const selectedItem = selectedItemId ? favorites.find(f => f.id === selectedItemId) ?? null : null;
 
     const groupedFavorites = favorites.reduce((acc, item) => {
         const key = item.occasion;
@@ -22,12 +37,15 @@ export default function Wardrobe() {
 
     const occasions = Object.keys(groupedFavorites);
 
-    const handleDelete = async (item: FavoriteItem) => {
-        if (confirm("¿Estás seguro de que quieres eliminar este look?")) {
-            await toggleFavorite(item); // Toggle removes if exists
-            setSelectedItem(null);
-        }
-    };
+
+    // While loading or about to redirect (guest)
+    if (isLoading || !user) {
+        return (
+            <main className="h-screen bg-black text-white flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full border-2 border-white border-t-transparent animate-spin" />
+            </main>
+        );
+    }
 
     return (
         <main className="min-h-screen bg-black text-white pb-32">
@@ -47,7 +65,7 @@ export default function Wardrobe() {
                     </Link>
                 )}
                 <span className="text-xs font-bold tracking-[0.2em] uppercase">
-                    {selectedOccasion ? selectedOccasion.toUpperCase() : "TU ARMARIO"}
+                    {selectedOccasion ? selectedOccasion.toUpperCase() : "MI BAÚL"}
                 </span>
                 <div className="w-10 h-10 rounded-full bg-zinc-900 flex items-center justify-center text-white">
                     <Grid className="w-5 h-5" />
@@ -55,19 +73,13 @@ export default function Wardrobe() {
             </header>
 
             <div className="px-6 space-y-6">
-                {isLoading ? (
-                    <div className="grid grid-cols-2 gap-4">
-                        {[1, 2, 3, 4].map((i) => (
-                            <div key={i} className="aspect-[3/4] rounded-2xl bg-zinc-900 animate-pulse border border-white/5" />
-                        ))}
-                    </div>
-                ) : favorites.length === 0 ? (
+                {favorites.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4 text-center">
                         <div className="w-16 h-16 rounded-full bg-zinc-900 flex items-center justify-center text-gray-600">
                             <Folder className="w-8 h-8" />
                         </div>
                         <div>
-                            <p className="text-lg font-bold">Tu armario está vacío</p>
+                            <p className="text-lg font-bold">Tu baúl está vacío</p>
                             <p className="text-sm text-gray-400">Guarda tus looks favoritos para verlos aquí.</p>
                         </div>
                     </div>
@@ -78,7 +90,7 @@ export default function Wardrobe() {
                             <motion.button
                                 key={item.id}
                                 layoutId={item.id}
-                                onClick={() => setSelectedItem(item)}
+                                onClick={() => setSelectedItemId(item.id)}
                                 className="relative aspect-[3/4] rounded-2xl overflow-hidden bg-zinc-900 border border-white/5 group text-left w-full"
                             >
                                 <img src={item.url} alt={item.occasion} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
@@ -151,24 +163,21 @@ export default function Wardrobe() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        onClick={() => setSelectedItem(null)}
+                        onClick={() => setSelectedItemId(null)}
                         className="fixed inset-0 z-50 bg-black/95 backdrop-blur-xl flex items-center justify-center overflow-hidden"
                     >
                         <div className="absolute top-6 right-6 flex gap-4 z-50">
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
-                                    if (confirm("¿Estás seguro de que quieres eliminar este look?")) {
-                                        toggleFavorite(selectedItem);
-                                        setSelectedItem(null);
-                                    }
+                                    setConfirmDeleteId(selectedItem.id);
                                 }}
                                 className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center text-red-500 hover:bg-red-500 hover:text-white transition-colors"
                             >
                                 <Trash2 className="w-6 h-6" />
                             </button>
                             <button
-                                onClick={() => setSelectedItem(null)}
+                                onClick={() => setSelectedItemId(null)}
                                 className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white hover:bg-white/20 transition-colors"
                             >
                                 <X className="w-6 h-6" />
@@ -209,12 +218,28 @@ export default function Wardrobe() {
                 )}
             </AnimatePresence>
 
+            <ConfirmModal
+                isOpen={!!confirmDeleteId}
+                title="Eliminar look"
+                message="¿Estás seguro de que quieres eliminar este look de tu armario?"
+                confirmLabel="Eliminar"
+                cancelLabel="Cancelar"
+                danger
+                onConfirm={() => {
+                    const item = favorites.find(f => f.id === confirmDeleteId);
+                    if (item) {
+                        toggleFavorite(item);
+                        setSelectedItemId(null);
+                    }
+                    setConfirmDeleteId(null);
+                }}
+                onCancel={() => setConfirmDeleteId(null)}
+            />
+
             <BottomNav />
         </main>
     );
 }
-
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 
 function ZoomableImage({ src, id }: { src: string, id: string }) {
     return (

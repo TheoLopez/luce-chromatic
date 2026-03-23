@@ -37,20 +37,27 @@ export async function withRetry<T>(fn: () => Promise<T>, label: string): Promise
 
 export function parseJsonResponse(text: string): unknown {
     const jsonStr = text.replace(/```json/g, "").replace(/```/g, "").trim();
-    const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-    const toParse = jsonMatch ? jsonMatch[0] : jsonStr;
+    // Match JSON objects {...} or arrays [...]
+    const objectMatch = jsonStr.match(/\{[\s\S]*\}/);
+    const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+    // Prefer whichever appears first in the string
+    let toParse = jsonStr;
+    if (objectMatch && arrayMatch) {
+        toParse = objectMatch.index! < arrayMatch.index! ? objectMatch[0] : arrayMatch[0];
+    } else if (arrayMatch) {
+        toParse = arrayMatch[0];
+    } else if (objectMatch) {
+        toParse = objectMatch[0];
+    }
     return JSON.parse(toParse);
 }
 
 export function validateAnalysisResponse(data: unknown): asserts data is Record<string, unknown> {
     if (!data || typeof data !== "object") throw new Error("Respuesta de análisis inválida: no es un objeto.");
     const d = data as Record<string, unknown>;
-    const required = ["season", "powerColors", "neutralColors", "blockedColors", "gender", "age", "bodyType"];
+    const required = ["season", "gender", "age", "bodyType"];
     for (const field of required) {
         if (!(field in d)) throw new Error(`Campo requerido faltante en análisis: "${field}"`);
-    }
-    if (!Array.isArray(d.powerColors) || (d.powerColors as unknown[]).length === 0) {
-        throw new Error("powerColors debe ser un array no vacío.");
     }
 }
 
@@ -65,10 +72,15 @@ export function validateOutfitPlanResponse(data: unknown): asserts data is { ima
     }
 }
 
+const VALID_CATEGORIES = ["superior", "inferior", "shoes", "accessories", "other"] as const;
+
 export function validateClothingResponse(data: unknown): asserts data is { description: string; category: string } {
     if (!data || typeof data !== "object") throw new Error("Respuesta de prenda inválida.");
     const d = data as Record<string, unknown>;
     if (typeof d.description !== "string" || d.description.trim() === "") {
         throw new Error("Campo 'description' faltante.");
+    }
+    if (!d.category || !VALID_CATEGORIES.includes(d.category as typeof VALID_CATEGORIES[number])) {
+        d.category = "other";
     }
 }

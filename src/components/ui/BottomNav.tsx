@@ -2,14 +2,31 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Palette, Shirt, User, Heart } from "lucide-react";
+import { Home, Palette, User, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+function HangerIcon({ className, strokeWidth = 2 }: { className?: string; strokeWidth?: number }) {
+    return (
+        <svg
+            className={className}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={strokeWidth}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+        >
+            <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7l8 6a1.5 1.5 0 0 1-.9 2.7H3.9A1.5 1.5 0 0 1 3 13l8-6V5.73A2 2 0 0 1 12 2z" />
+            <path d="M3 20h18" />
+        </svg>
+    );
+}
 
 const items = [
     { icon: Home, label: "Inicio", href: "/dashboard" },
     { icon: Palette, label: "Simulador", href: "/simulator" },
-    { icon: Shirt, label: "Mi Ropa", href: "/my-clothes" },
-    { icon: Heart, label: "Favoritos", href: "/wardrobe" },
+    { icon: HangerIcon, label: "Mi Ropa", href: "/my-clothes" },
+    { icon: Heart, label: "Mi Baúl", href: "/wardrobe" },
     { icon: User, label: "Perfil", href: "/profile" },
 ];
 

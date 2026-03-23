@@ -79,9 +79,6 @@ describe("parseJsonResponse()", () => {
 
 const validAnalysis = {
     season: "Invierno Profundo",
-    powerColors: [{ name: "Azul", hex: "#0000FF", usage: "Primary" }],
-    neutralColors: [],
-    blockedColors: [],
     gender: "Mujer",
     age: 30,
     bodyType: "Atlético",
@@ -96,17 +93,24 @@ describe("validateAnalysisResponse()", () => {
         expect(() => validateAnalysisResponse(null)).toThrow("no es un objeto");
     });
 
-    it("throws if required field is missing", () => {
+    it("throws if season is missing", () => {
         const { season: _, ...noSeason } = validAnalysis;
         expect(() => validateAnalysisResponse(noSeason)).toThrow('"season"');
     });
 
-    it("throws if powerColors is empty array", () => {
-        expect(() => validateAnalysisResponse({ ...validAnalysis, powerColors: [] })).toThrow("array no vacío");
+    it("throws if gender is missing", () => {
+        const { gender: _, ...noGender } = validAnalysis;
+        expect(() => validateAnalysisResponse(noGender)).toThrow('"gender"');
     });
 
-    it("throws if powerColors is not an array", () => {
-        expect(() => validateAnalysisResponse({ ...validAnalysis, powerColors: "red" })).toThrow("array no vacío");
+    it("throws if age is missing", () => {
+        const { age: _, ...noAge } = validAnalysis;
+        expect(() => validateAnalysisResponse(noAge)).toThrow('"age"');
+    });
+
+    it("throws if bodyType is missing", () => {
+        const { bodyType: _, ...noBodyType } = validAnalysis;
+        expect(() => validateAnalysisResponse(noBodyType)).toThrow('"bodyType"');
     });
 });
 

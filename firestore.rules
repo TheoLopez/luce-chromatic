@@ -9,18 +9,17 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly([
             'uid', 'email', 'displayName', 'photoURL',
             'analysis', 'userImage', 'selectedStyles',
-            'favorites', 'myClothes', 'updatedAt'
+            'favorites', 'myClothes', 'savedSimulations', 'updatedAt'
           ])
         && request.resource.data.uid == userId;
 
       allow update: if request.auth != null
         && request.auth.uid == userId
         && request.resource.data.uid == userId
-        && request.resource.data.email == resource.data.email
         && request.resource.data.keys().hasOnly([
             'uid', 'email', 'displayName', 'photoURL',
             'analysis', 'userImage', 'selectedStyles',
-            'favorites', 'myClothes', 'updatedAt'
+            'favorites', 'myClothes', 'savedSimulations', 'updatedAt'
           ]);
     }
   }

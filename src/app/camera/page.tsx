@@ -13,20 +13,13 @@ import { cn } from "@/lib/utils";
 
 export default function SmartCamera() {
     const router = useRouter();
-    const { user, isLoading, setUserImage, setSelectedStyles, setAnalysis, userImage, analysis } = useUser();
+    const { setUserImage, setSelectedStyles, setAnalysis, userImage } = useUser();
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
-        if (!isLoading) {
-            if (!user) {
-                router.push("/");
-            }
-            // Removed redirect for existing analysis to allow re-analysis
-        }
-    }, [user, isLoading, router]);
+    // Camera is accessible to both authenticated and guest users
 
     const [checks, setChecks] = useState({
         light: false,
@@ -146,6 +139,10 @@ export default function SmartCamera() {
             const validation = await validateImageForAnalysis(base64Image);
 
             if (validation.isValid) {
+                // Cache base64 in localStorage so the simulator can use it
+                // without fetching from Storage (avoids CORS issues)
+                const { cacheUserImageBase64 } = await import("@/lib/gemini");
+                cacheUserImageBase64(base64Image);
                 setUserImage(base64Image);
                 setShowStylePopup(true);
             } else {
